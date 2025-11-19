@@ -420,13 +420,13 @@ class Indexer:
     
     
 def main():
-    corpus_path = "DEV"
+    corpus_path = "/Users/maxbader/Desktop/DEV"
     
     # Initialize indexer
     indexer = Indexer(
         corpus_path, 
         output_dir="index_output", 
-        partial_index_threshold=10000,
+        partial_index_threshold=2000,
         enable_ngrams=True,          # 2-gram and 3-gram indexing (2 points)
         enable_positions=True,       # Word position tracking (2 points)
         enable_anchor_text=True      # Anchor text indexing (1 point)
