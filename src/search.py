@@ -1,8 +1,3 @@
-"""
-OPTIMIZED Search Component - Milestone 2
-Precomputes and caches IDF scores for fast startup and queries
-"""
-
 import pickle
 import math
 import time
@@ -13,20 +8,13 @@ from collections import defaultdict
 
 class SearchEngine:
     def __init__(self, index_dir="index_output", force_recompute_idf=False):
-        """
-        Initialize search engine with IDF caching
-        
-        Args:
-            index_dir: Directory containing the index files
-            force_recompute_idf: Force recomputation of IDF scores
-        """
         self.index_dir = Path(index_dir)
         self.stemmer = PorterStemmer()
         
         print("Loading search engine...")
         start_time = time.time()
         
-        # Load term dictionary (small - maps terms to partial indexes)
+        # Load term dictionary
         term_dict_file = self.index_dir / "term_dictionary.pkl"
         with open(term_dict_file, 'rb') as f:
             self.term_to_partial = pickle.load(f)
@@ -38,7 +26,7 @@ class SearchEngine:
         
         self.total_docs = len(self.doc_id_to_url)
         
-        # Load or compute IDF scores (with caching!)
+        # Load or compute IDF scores
         idf_cache_file = self.index_dir / "idf_scores.pkl"
         
         if idf_cache_file.exists() and not force_recompute_idf:
@@ -50,19 +38,25 @@ class SearchEngine:
             print("Computing IDF scores (this will take a while, but only once)...")
             self.idf_scores = self._compute_and_cache_idf_scores(idf_cache_file)
         
+        # Load all partial indexes into memory at startup
+        # To eliminate file I/O during queries
+        print("Loading all partial indexes into memory...")
+        self.partial_indexes = {}
+        partial_files = sorted(self.index_dir.glob("partial_index_*.pkl"))
+        
+        for partial_file in partial_files:
+            partial_id = int(partial_file.stem.split('_')[-1])
+            with open(partial_file, 'rb') as f:
+                self.partial_indexes[partial_id] = pickle.load(f)
+        
+        print(f"Loaded {len(self.partial_indexes)} partial indexes into memory")
+        
         load_time = (time.time() - start_time) * 1000
-        print(f"✓ Search engine ready! Loaded in {load_time:.2f}ms")
-        print(f"✓ Total documents: {self.total_docs}")
-        print(f"✓ Total terms: {len(self.term_to_partial)}")
+        print(f"Search engine ready! Loaded in {load_time:.2f}ms")
+        print(f"Total documents: {self.total_docs}")
+        print(f"Total terms: {len(self.term_to_partial)}")
     
     def _compute_and_cache_idf_scores(self, cache_file):
-        """
-        Compute IDF scores and cache them for future use
-        This only needs to be done once!
-        
-        Returns:
-            dict: {term: idf_score}
-        """
         idf_scores = {}
         term_doc_freq = defaultdict(set)  # term -> set of doc_ids
         
@@ -97,24 +91,15 @@ class SearchEngine:
         with open(cache_file, 'wb') as f:
             pickle.dump(idf_scores, f)
         
-        print(f"✓ IDF scores computed and cached for {len(idf_scores)} terms")
+        print(f"IDF scores computed and cached for {len(idf_scores)} terms")
         return idf_scores
     
     def tokenize(self, text):
-        """Extract alphanumeric tokens from text"""
+        # Extract alphanumeric tokens from text
         tokens = re.findall(r'[a-zA-Z0-9]+', text.lower())
         return tokens
     
     def get_postings_for_term(self, term):
-        """
-        Get postings for a term by loading ONLY the relevant partial indexes.
-        
-        Args:
-            term: Stemmed term to look up
-            
-        Returns:
-            List of postings: [{'doc_id': int, 'tf': float, ...}, ...]
-        """
         # Check if term exists
         if term not in self.term_to_partial:
             return []
@@ -124,13 +109,10 @@ class SearchEngine:
         
         all_postings = []
         
-        # Load ONLY the relevant partial indexes
+        # Access partial indexes from memory (no disk I/O!)
         for partial_id in partial_ids:
-            partial_file = self.index_dir / f"partial_index_{partial_id}.pkl"
-            
-            with open(partial_file, 'rb') as f:
-                data = pickle.load(f)
-                inverted_index = data.get('inverted_index', {})
+            data = self.partial_indexes[partial_id]
+            inverted_index = data.get('inverted_index', {})
             
             # Get postings for this term
             if term in inverted_index:
@@ -139,18 +121,6 @@ class SearchEngine:
         return all_postings
     
     def search(self, query, top_k=5):
-        """
-        Search for query using Boolean AND with TF-IDF ranking
-        
-        Args:
-            query: Search query string
-            top_k: Number of results to return
-            
-        Returns:
-            tuple: (results, query_time_ms)
-                results: List of (url, score) tuples
-                query_time_ms: Query processing time in milliseconds
-        """
         start_time = time.time()
         
         # Tokenize and stem query
@@ -216,8 +186,6 @@ class SearchEngine:
         return results, query_time
     
     def display_results(self, query, results, query_time):
-        """Display search results"""
-        print("\n" + "="*80)
         print(f"Query: '{query}'")
         print(f"Query time: {query_time:.2f}ms")
         print("="*80)
@@ -230,57 +198,8 @@ class SearchEngine:
                 print(f"{i}. Score: {score:.4f}")
                 print(f"   URL: {url}")
                 print()
-        
-        print("="*80)
-
-
-def run_test_queries():
-    """
-    Run the required test queries for M2
-    """
-    # Initialize search engine (will use cached IDF if available)
-    search_engine = SearchEngine("index_output")
-    
-    # Required test queries for M2
-    test_queries = [
-        "cristina lopes",
-        "machine learning",
-        "ACM",
-        "master of software engineering"
-    ]
-    
-    print("\n" + "="*80)
-    print("MILESTONE 2 - TEST QUERIES")
-    print("="*80)
-    
-    all_results = {}
-    
-    for query in test_queries:
-        results, query_time = search_engine.search(query, top_k=5)
-        search_engine.display_results(query, results, query_time)
-        all_results[query] = (results, query_time)
-        
-        # Check if query time meets requirement
-        if query_time < 300:
-            print(f"✓ Query time OK: {query_time:.2f}ms < 300ms")
-        else:
-            print(f"⚠ Query time: {query_time:.2f}ms (should be < 300ms)")
-        print()
-    
-    # Generate summary for report
-    print("\n" + "="*80)
-    print("SUMMARY FOR M2 REPORT")
-    print("="*80)
-    
-    for query in test_queries:
-        results, query_time = all_results[query]
-        print(f"\nQuery: '{query}'")
-        print(f"Query time: {query_time:.2f}ms")
-        print("Top 5 URLs:")
-        for i, (url, score) in enumerate(results, 1):
-            print(f"  {i}. {url}")
-    
-    return all_results
+        print("\n")
+        print("\n")
 
 
 def interactive_search():
@@ -289,11 +208,10 @@ def interactive_search():
     """
     search_engine = SearchEngine("index_output")
     
-    print("\n" + "="*80)
+    print("\n")
     print("INTERACTIVE SEARCH")
-    print("="*80)
     print("Enter queries to search (or 'quit' to exit)")
-    print("="*80 + "\n")
+    print("\n")
     
     while True:
         query = input("Search query: ").strip()
@@ -311,10 +229,4 @@ def interactive_search():
 
 if __name__ == "__main__":
     import sys
-    
-    if len(sys.argv) > 1 and sys.argv[1] == "interactive":
-        # Interactive mode
-        interactive_search()
-    else:
-        # Run test queries for M2 report
-        run_test_queries()
+    interactive_search()

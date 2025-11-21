@@ -426,10 +426,10 @@ def main():
     indexer = Indexer(
         corpus_path, 
         output_dir="index_output", 
-        partial_index_threshold=2000,
-        enable_ngrams=True,          # 2-gram and 3-gram indexing (2 points)
-        enable_positions=True,       # Word position tracking (2 points)
-        enable_anchor_text=True      # Anchor text indexing (1 point)
+        partial_index_threshold=5000,
+        enable_ngrams=True,          # 2-gram and 3-gram indexing
+        enable_positions=True,       # Word position tracking
+        enable_anchor_text=True      # Anchor text indexing
     )
     
     # Build index
